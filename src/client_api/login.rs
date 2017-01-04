@@ -2,7 +2,7 @@ use rocket;
 use rocket_contrib::JSON;
 use rocket::http::Status;
 use rocket::response::status;
-use rocket::response::Failure;
+use super::error;
 
 #[derive(Deserialize, Debug)]
 struct LoginRequest {
@@ -38,14 +38,17 @@ fn password_request(login_request: &LoginRequest) -> Status {
 }
 
 #[post("/login", format="application/json", data="<json_request>")]
-fn login(json_request: JSON<LoginRequest>) -> Result<status::Custom<JSON<LoginResponse>>, Failure> {
+fn login(json_request: JSON<LoginRequest>) -> Result<status::Custom<JSON<LoginResponse>>, status::Custom<JSON<error::Error>>> {
 
     let login_request: LoginRequest = json_request.0;
 
     let status : Status;
     match login_request.login_type.as_str() {
         "m.login.password" => status = password_request(&login_request),
-        _ => return Err(Failure(Status::BadRequest)),
+        _ => return Err(status::Custom(Status::BadRequest, JSON(error::Error{
+            errcode : "M_UNKNOWN".to_string(),
+            error : "Bad login type".to_string(),
+        }))),
     }
 
     if status == Status::Ok {
@@ -56,7 +59,10 @@ fn login(json_request: JSON<LoginRequest>) -> Result<status::Custom<JSON<LoginRe
             refresh_token: None,
         })));
     } else {
-        return Err(Failure(status));
+        return Err(status::Custom(Status::Forbidden, JSON(error::Error {
+            errcode : "M_FORBIDDEN".to_string(),
+            error : "Bad login".to_string(),
+        })))
     }
 }
 
