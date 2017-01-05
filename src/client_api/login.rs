@@ -26,32 +26,39 @@ fn authenticate_password(user: &String, password: &String) -> bool {
     return user.as_str() == "foo" && password.as_str() == "bar";
 }
 
-fn password_request(login_request: &LoginRequest) -> Status {
-    match login_request.user {
-        None => return Status::Unauthorized,
-        Some(ref user) =>
-            match authenticate_password(&user, &login_request.password) {
-                true => return Status::Ok,
-                false => return Status::Unauthorized,
-            }
+fn lookup_3pid(_ : String, _ : String) -> String {
+    return "".to_string();
+}
+
+fn handle_password_request(login_request: LoginRequest) -> bool {
+    let user_id: String;
+    if login_request.medium.is_some() && login_request.address.is_some() {
+        user_id = lookup_3pid(login_request.medium.unwrap(), login_request.address.unwrap());
+    } else {
+        if login_request.user.is_some() {
+            user_id = login_request.user.unwrap();
+        } else {
+            return false;
+        }
     }
+
+    return authenticate_password(&user_id, &login_request.password);
 }
 
 #[post("/login", format="application/json", data="<json_request>")]
 fn login(json_request: JSON<LoginRequest>) -> Result<status::Custom<JSON<LoginResponse>>, status::Custom<JSON<error::Error>>> {
-
     let login_request: LoginRequest = json_request.0;
 
-    let status : Status;
+    let authenticated;
     match login_request.login_type.as_str() {
-        "m.login.password" => status = password_request(&login_request),
+        "m.login.password" => authenticated = handle_password_request(login_request),
         _ => return Err(status::Custom(Status::BadRequest, JSON(error::Error{
-            errcode : "M_UNKNOWN".to_string(),
+            errcode : error::errcodes::UNKNOWN.to_string(),
             error : "Bad login type".to_string(),
         }))),
     }
 
-    if status == Status::Ok {
+    if authenticated {
         return Ok(status::Custom(Status::Ok, JSON(LoginResponse {
             access_token: String::from("abcdef"),
             home_server: String::from("foobar"),
@@ -60,7 +67,7 @@ fn login(json_request: JSON<LoginRequest>) -> Result<status::Custom<JSON<LoginRe
         })));
     } else {
         return Err(status::Custom(Status::Forbidden, JSON(error::Error {
-            errcode : "M_FORBIDDEN".to_string(),
+            errcode : error::errcodes::FORBIDDEN.to_string(),
             error : "Bad login".to_string(),
         })))
     }
@@ -72,14 +79,16 @@ pub fn mount(rocket: rocket::Rocket) -> rocket::Rocket {
 
 #[cfg(test)]
 mod test {
+    use super::error;
     use super::rocket;
+    use super::{LoginRequest, LoginResponse};
     use rocket::http::{Status, Method};
     use rocket::http::ContentType;
     use rocket::testing::MockRequest;
     use serde_json;
 
     fn login_with_password_request(user: &str, password: &str, login_type: &str) -> MockRequest {
-        let login_request = super::LoginRequest {
+        let login_request = LoginRequest {
             password : password.to_string(),
             login_type: login_type.to_string(),
             user: Some(user.to_string()),
@@ -100,7 +109,7 @@ mod test {
         assert_eq!(response.status(), Status::Ok);
 
         let body_str = response.body().and_then(|b| b.into_string());
-        let login_response : super::LoginResponse = serde_json::from_str(body_str.unwrap().as_str()).unwrap();
+        let login_response : LoginResponse = serde_json::from_str(body_str.unwrap().as_str()).unwrap();
         assert!(!login_response.access_token.is_empty());
         assert!(!login_response.home_server.is_empty());
         assert!(!login_response.user_id.is_empty());
@@ -109,14 +118,14 @@ mod test {
         let mut response = req.dispatch_with(&rocket);
         assert_eq!(response.status(), Status::Forbidden);
         let body_str = response.body().and_then(|b| b.into_string());
-        let error : super::error::Error = serde_json::from_str(body_str.unwrap().as_str()).unwrap();
-        assert_eq!(error.errcode, "M_FORBIDDEN");
+        let error : error::Error = serde_json::from_str(body_str.unwrap().as_str()).unwrap();
+        assert_eq!(error.errcode, error::errcodes::FORBIDDEN);
 
         let mut req = login_with_password_request("foo", "baz", "");
         let mut response = req.dispatch_with(&rocket);
         assert_eq!(response.status(), Status::BadRequest);
         let body_str = response.body().and_then(|b| b.into_string());
         let error : super::error::Error = serde_json::from_str(body_str.unwrap().as_str()).unwrap();
-        assert_eq!(error.errcode, "M_UNKNOWN");
+        assert_eq!(error.errcode, error::errcodes::UNKNOWN);
     }
 }

@@ -2,7 +2,7 @@ use rocket;
 
 mod login;
 mod versions;
-pub mod error;
+mod error;
 
 pub fn mount() -> rocket::Rocket {
     let mut rocket = rocket::ignite();
