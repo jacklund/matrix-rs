@@ -22,27 +22,30 @@ struct LoginResponse {
     refresh_token: Option<String>,
 }
 
-fn authenticate_password(user: &String, password: &String) -> bool {
-    return user.as_str() == "foo" && password.as_str() == "bar";
+fn authenticate_password(user: &str, password: &str) -> bool {
+    return user == "foo" && password == "bar";
 }
 
-fn lookup_3pid(_ : String, _ : String) -> String {
-    return "".to_string();
+fn lookup_3pid(_ : String, _ : String) -> Option<String> {
+    return Some("".to_string());
+}
+
+fn get_user_id(login_request: LoginRequest) -> Option<String> {
+    if login_request.medium.is_some() && login_request.address.is_some() {
+        return lookup_3pid(login_request.medium.unwrap().clone(), login_request.address.unwrap().clone());
+    } else if login_request.user.is_some() {
+        return Some(login_request.user.unwrap().clone());
+    } else {
+        return None;
+    }
 }
 
 fn handle_password_request(login_request: LoginRequest) -> bool {
-    let user_id: String;
-    if login_request.medium.is_some() && login_request.address.is_some() {
-        user_id = lookup_3pid(login_request.medium.unwrap(), login_request.address.unwrap());
-    } else {
-        if login_request.user.is_some() {
-            user_id = login_request.user.unwrap();
-        } else {
-            return false;
-        }
+    let password = login_request.password.clone();
+    match get_user_id(login_request) {
+        Some(user_id) => return authenticate_password(user_id.as_str(), password.as_str()),
+        None => return false,
     }
-
-    return authenticate_password(&user_id, &login_request.password);
 }
 
 #[post("/login", format="application/json", data="<json_request>")]
