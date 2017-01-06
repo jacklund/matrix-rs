@@ -22,30 +22,48 @@ struct LoginResponse {
     refresh_token: Option<String>,
 }
 
-fn authenticate_password(user: &str, password: &str) -> bool {
-    return user == "foo" && password == "bar";
+fn authenticate_password(user: &str, password: &str) -> Result<bool, String> {
+    return Ok(user == "foo" && password == "bar");
 }
 
-fn lookup_3pid(_ : String, _ : String) -> Option<String> {
-    return Some("".to_string());
+fn lookup_3pid(_ : String, _ : String) -> Result<Option<String>, String> {
+    return Ok(Some("".to_string()));
 }
 
-fn get_user_id(login_request: LoginRequest) -> Option<String> {
+fn get_user_id(login_request: LoginRequest) -> Result<Option<String>, String> {
     if login_request.medium.is_some() && login_request.address.is_some() {
         return lookup_3pid(login_request.medium.unwrap().clone(), login_request.address.unwrap().clone());
     } else if login_request.user.is_some() {
-        return Some(login_request.user.unwrap().clone());
+        return Ok(Some(login_request.user.unwrap().clone()));
     } else {
-        return None;
+        return Ok(None);
     }
 }
 
-fn handle_password_request(login_request: LoginRequest) -> bool {
+fn get_login_response(_ : &str) -> Result<Option<LoginResponse>, String> {
+    return Ok(Some(LoginResponse {
+        access_token: String::from("abcdef"),
+        home_server: String::from("foobar"),
+        user_id: String::from("Foo Bar"),
+        refresh_token: None,
+    }));
+}
+
+fn handle_password_request(login_request: LoginRequest) -> Result<Option<LoginResponse>, String> {
     let password = login_request.password.clone();
     match get_user_id(login_request) {
-        Some(user_id) => return authenticate_password(user_id.as_str(), password.as_str()),
-        None => return false,
-    }
+        Ok(user_id) => match user_id {
+            Some(user_id) => match authenticate_password(user_id.as_str(), password.as_str()) {
+                Ok(authenticated) => match authenticated {
+                    true  => return get_login_response(user_id.as_str()),
+                    false => return Ok(None),
+                },
+                Err(error_string) => return Err(error_string),
+            },
+            None => return Ok(None),
+        },
+        Err(error_string) => return Err(error_string),
+    };
 }
 
 #[post("/login", format="application/json", data="<json_request>")]
@@ -61,18 +79,19 @@ fn login(json_request: JSON<LoginRequest>) -> Result<status::Custom<JSON<LoginRe
         }))),
     }
 
-    if authenticated {
-        return Ok(status::Custom(Status::Ok, JSON(LoginResponse {
-            access_token: String::from("abcdef"),
-            home_server: String::from("foobar"),
-            user_id: String::from("Foo Bar"),
-            refresh_token: None,
-        })));
-    } else {
-        return Err(status::Custom(Status::Forbidden, JSON(error::Error {
-            errcode : error::errcodes::FORBIDDEN.to_string(),
-            error : "Bad login".to_string(),
-        })))
+    match authenticated {
+        Ok(login_response) => match login_response {
+            Some(login_response) => return Ok(status::Custom(Status::Ok, JSON(login_response))),
+            None                 => return Err(status::Custom(Status::Forbidden, JSON(error::Error {
+                errcode : error::errcodes::FORBIDDEN.to_string(),
+                error : "Bad login".to_string(),
+            }))),
+        },
+        Err(error_string)  => return Err(status::Custom(Status::InternalServerError,
+            JSON(error::Error {
+                errcode : error::errcodes::UNKNOWN.to_string(),
+                error   : error_string,
+        }))),
     }
 }
 
@@ -104,7 +123,7 @@ mod test {
     }
 
     #[test]
-    fn test_password_login() {
+    fn test_password_login_authenticated() {
         let rocket = rocket::ignite().mount("/_matrix/client/r0", routes![super::login]);
         let mut req = login_with_password_request("foo", "bar", "m.login.password");
         let mut response = req.dispatch_with(&rocket);
@@ -116,17 +135,29 @@ mod test {
         assert!(!login_response.access_token.is_empty());
         assert!(!login_response.home_server.is_empty());
         assert!(!login_response.user_id.is_empty());
+    }
 
+    #[test]
+    fn test_password_login_failed_authentication() {
+        let rocket = rocket::ignite().mount("/_matrix/client/r0", routes![super::login]);
         let mut req = login_with_password_request("foo", "baz", "m.login.password");
         let mut response = req.dispatch_with(&rocket);
+
         assert_eq!(response.status(), Status::Forbidden);
+
         let body_str = response.body().and_then(|b| b.into_string());
         let error : error::Error = serde_json::from_str(body_str.unwrap().as_str()).unwrap();
         assert_eq!(error.errcode, error::errcodes::FORBIDDEN);
+    }
 
+    #[test]
+    fn test_password_login_bad_login_type() {
+        let rocket = rocket::ignite().mount("/_matrix/client/r0", routes![super::login]);
         let mut req = login_with_password_request("foo", "baz", "");
         let mut response = req.dispatch_with(&rocket);
+
         assert_eq!(response.status(), Status::BadRequest);
+
         let body_str = response.body().and_then(|b| b.into_string());
         let error : super::error::Error = serde_json::from_str(body_str.unwrap().as_str()).unwrap();
         assert_eq!(error.errcode, error::errcodes::UNKNOWN);
