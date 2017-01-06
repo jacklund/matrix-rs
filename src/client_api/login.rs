@@ -70,6 +70,13 @@ fn handle_password_request(login_request: &serde_json::Value) -> Result<Option<L
     }
 }
 
+fn get_login_type(login_request: &serde_json::Value) -> Result<&str, String> {
+    match get_login_request_value(&login_request, "type") {
+        Some(login_type) => return Ok(login_type),
+        None             => return Err(error::errcodes::BAD_JSON.to_string()),
+    }
+}
+
 #[get("/login")]
 fn get_flows() -> JSON<serde_json::Value> {
     let mut flow = serde_json::Map::new();
@@ -77,13 +84,6 @@ fn get_flows() -> JSON<serde_json::Value> {
     let mut value = serde_json::Map::new();
     value.insert("flows".to_string(), serde_json::Value::Array(vec![serde_json::Value::Object(flow)]));
     return JSON(serde_json::Value::Object(value));
-}
-
-fn get_login_type(login_request: &serde_json::Value) -> Result<&str, String> {
-    match get_login_request_value(&login_request, "type") {
-        Some(login_type) => return Ok(login_type),
-        None             => return Err(error::errcodes::BAD_JSON.to_string()),
-    }
 }
 
 #[post("/login", format="application/json", data="<login_request>")]
