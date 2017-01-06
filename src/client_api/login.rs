@@ -13,7 +13,12 @@ struct LoginResponse {
     refresh_token: Option<String>,
 }
 
-fn authenticate_password(user: &str, password: &str) -> Result<bool, String> {
+fn authenticate_password(user: &str, login_request: &serde_json::Value) -> Result<bool, String> {
+    let password_opt = get_login_request_value(&login_request, "password");
+    if password_opt.is_none() {
+        return Err(error::errcodes::MISSING_PARAM.to_string());
+    }
+    let password =  password_opt.unwrap();
     return Ok(user == "foo" && password == "bar");
 }
 
@@ -51,16 +56,11 @@ fn get_login_response(_ : &str) -> Result<Option<LoginResponse>, String> {
     }));
 }
 
-fn handle_password_request(login_request: &serde_json::Value) -> Result<Option<LoginResponse>, String> {
-    let password_opt = get_login_request_value(&login_request, "password");
-    if password_opt.is_none() {
-        return Err(error::errcodes::MISSING_PARAM.to_string());
-    }
-    let password =  password_opt.unwrap();
+fn handle_authentication_request(auth_fn: fn(&str, &serde_json::Value) -> Result<bool, String>, login_request: &serde_json::Value) -> Result<Option<LoginResponse>, String> {
     let user_id = try!(get_user_id(&login_request));
     match user_id {
         Some(user_id) => {
-            let authenticated = try!(authenticate_password(user_id.as_str(), password));
+            let authenticated = try!(auth_fn(user_id.as_str(), login_request));
             match authenticated {
                 true  => return get_login_response(user_id.as_str()),
                 false => return Ok(None),
@@ -92,7 +92,7 @@ fn login(login_request: JSON<serde_json::Value>) -> Result<status::Custom<JSON<L
     match get_login_type(&login_request) {
         Ok(login_type) => {
             match login_type {
-                "m.login.password" => authenticated = handle_password_request(&login_request),
+                "m.login.password" => authenticated = handle_authentication_request(authenticate_password, &login_request),
                 _ => return Err(status::Custom(Status::BadRequest, JSON(error::Error{
                     errcode : error::errcodes::UNKNOWN.to_string(),
                     error : "Bad login type".to_string(),
