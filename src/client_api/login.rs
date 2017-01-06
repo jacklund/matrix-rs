@@ -2,6 +2,7 @@ use rocket;
 use rocket_contrib::JSON;
 use rocket::http::Status;
 use rocket::response::status;
+use serde_json;
 use super::error;
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -66,6 +67,15 @@ fn handle_password_request(login_request: LoginRequest) -> Result<Option<LoginRe
     };
 }
 
+#[get("/login")]
+fn get_flows() -> JSON<serde_json::Value> {
+    let mut flow = serde_json::Map::new();
+    flow.insert("type".to_string(), serde_json::Value::String("m.login.password".to_string()));
+    let mut value = serde_json::Map::new();
+    value.insert("flows".to_string(), serde_json::Value::Array(vec![serde_json::Value::Object(flow)]));
+    return JSON(serde_json::Value::Object(value));
+}
+
 #[post("/login", format="application/json", data="<json_request>")]
 fn login(json_request: JSON<LoginRequest>) -> Result<status::Custom<JSON<LoginResponse>>, status::Custom<JSON<error::Error>>> {
     let login_request: LoginRequest = json_request.0;
@@ -96,7 +106,7 @@ fn login(json_request: JSON<LoginRequest>) -> Result<status::Custom<JSON<LoginRe
 }
 
 pub fn mount(rocket: rocket::Rocket) -> rocket::Rocket {
-    return rocket.mount("/_matrix/client/r0", routes![login]);
+    return rocket.mount("/_matrix/client/r0", routes![get_flows, login]);
 }
 
 #[cfg(test)]
@@ -108,6 +118,22 @@ mod test {
     use rocket::http::ContentType;
     use rocket::testing::MockRequest;
     use serde_json;
+
+    #[test]
+    fn test_get_flows() {
+        let rocket = rocket::ignite().mount("/_matrix/client/r0", routes![super::get_flows]);
+        let mut req = MockRequest::new(Method::Get, "/_matrix/client/r0/login");
+        let mut response = req.dispatch_with(&rocket);
+
+        assert_eq!(response.status(), Status::Ok);
+
+        let body_str = response.body().and_then(|b| b.into_string());
+        let json_response: serde_json::Value = serde_json::from_str(body_str.unwrap().as_str()).unwrap();
+        let flows = json_response.as_object().unwrap().get("flows").unwrap().as_array().unwrap();
+        assert_eq!(1, flows.len());
+        let flow = flows[0].as_object().unwrap();
+        assert_eq!("m.login.password", flow.get("type").unwrap().as_str().unwrap());
+    }
 
     fn login_with_password_request(user: &str, password: &str, login_type: &str) -> MockRequest {
         let login_request = LoginRequest {
