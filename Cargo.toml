@@ -4,6 +4,7 @@ version = "0.0.1"
 authors = ["Jack Lund <jackl@geekheads.net>"]
 
 [dependencies]
+regex = "0.2"
 rocket = "0.1.4"
 rocket_codegen = "0.1.4"
 rocket_contrib = "0.1.4"

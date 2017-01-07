@@ -3,6 +3,7 @@
 
 #![feature(proc_macro)]
 
+extern crate regex;
 extern crate rocket;
 #[macro_use]
 extern crate rocket_contrib;

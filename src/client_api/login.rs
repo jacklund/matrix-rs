@@ -16,7 +16,7 @@ struct LoginResponse {
 fn authenticate_password(user: &str, login_request: &serde_json::Value) -> Result<bool, String> {
     let password_opt = get_login_request_value(&login_request, "password");
     if password_opt.is_none() {
-        return Err(error::errcodes::MISSING_PARAM.to_string());
+        return Err(error::Errcode::MissingParam.as_error_code_string());
     }
     let password =  password_opt.unwrap();
     return Ok(user == "foo" && password == "bar");
@@ -73,7 +73,7 @@ fn handle_authentication_request(auth_fn: fn(&str, &serde_json::Value) -> Result
 fn get_login_type(login_request: &serde_json::Value) -> Result<&str, String> {
     match get_login_request_value(&login_request, "type") {
         Some(login_type) => return Ok(login_type),
-        None             => return Err(error::errcodes::BAD_JSON.to_string()),
+        None             => return Err(error::Errcode::BadJson.as_error_code_string()),
     }
 }
 
@@ -94,13 +94,13 @@ fn login(login_request: JSON<serde_json::Value>) -> Result<status::Custom<JSON<L
             match login_type {
                 "m.login.password" => authenticated = handle_authentication_request(authenticate_password, &login_request),
                 _ => return Err(status::Custom(Status::BadRequest, JSON(error::Error{
-                    errcode : error::errcodes::UNKNOWN.to_string(),
+                    errcode : error::Errcode::Unknown,
                     error : "Bad login type".to_string(),
                 }))),
             }
         }
         Err(error_message) => return Err(status::Custom(Status::BadRequest, JSON(error::Error{
-            errcode : error::errcodes::UNKNOWN.to_string(),
+            errcode : error::Errcode::Unknown,
             error : error_message,
         }))),
     }
@@ -109,13 +109,13 @@ fn login(login_request: JSON<serde_json::Value>) -> Result<status::Custom<JSON<L
         Ok(login_response) => match login_response {
             Some(login_response) => return Ok(status::Custom(Status::Ok, JSON(login_response))),
             None                 => return Err(status::Custom(Status::Forbidden, JSON(error::Error {
-                errcode : error::errcodes::FORBIDDEN.to_string(),
+                errcode : error::Errcode::Forbidden,
                 error : "Bad login".to_string(),
             }))),
         },
         Err(error_string)  => return Err(status::Custom(Status::InternalServerError,
             JSON(error::Error {
-                errcode : error::errcodes::UNKNOWN.to_string(),
+                errcode : error::Errcode::Unknown,
                 error   : error_string,
         }))),
     }
@@ -199,7 +199,7 @@ mod test {
 
         let body_str = response.body().and_then(|b| b.into_string());
         let error : error::Error = serde_json::from_str(body_str.unwrap().as_str()).unwrap();
-        assert_eq!(error.errcode, error::errcodes::FORBIDDEN);
+        assert_eq!(error.errcode, error::Errcode::Forbidden);
     }
 
     #[test]
@@ -212,7 +212,7 @@ mod test {
 
         let body_str = response.body().and_then(|b| b.into_string());
         let error : super::error::Error = serde_json::from_str(body_str.unwrap().as_str()).unwrap();
-        assert_eq!(error.errcode, error::errcodes::UNKNOWN);
+        assert_eq!(error.errcode, error::Errcode::Unknown);
     }
 
     #[test]
@@ -224,7 +224,8 @@ mod test {
         assert_eq!(response.status(), Status::Forbidden);
 
         let body_str = response.body().and_then(|b| b.into_string());
-        let error : error::Error = serde_json::from_str(body_str.unwrap().as_str()).unwrap();
-        assert_eq!(error.errcode, error::errcodes::FORBIDDEN);
+        println!("{:?}", body_str);
+        let error : serde_json::Map<String, String> = serde_json::from_str(body_str.unwrap().as_str()).unwrap();
+        assert_eq!(error::Errcode::Forbidden.as_error_code_string(), error.get("errcode").unwrap().as_str());
     }
 }
