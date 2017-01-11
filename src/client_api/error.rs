@@ -1,9 +1,83 @@
 use regex::Regex;
 use std::fmt;
+use std::collections::HashMap;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-#[allow(dead_code)]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
-pub enum Errcode {
+macro_rules! enum_str {
+    ($name:ident { $($variant:ident, )* }) => {
+        #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+        pub enum $name {
+            $($variant,)*
+        }
+
+        fn as_string(errcode: Errcode) -> String {
+            let re = Regex::new(r"([a-z])([A-Z])").unwrap();
+            "M_".to_string() + re.replace_all(errcode.to_string().as_str(), r"${1}_${2}").to_uppercase().as_str()
+        }
+
+        lazy_static! {
+            static ref FROM_STRING: HashMap<String, Errcode> = {
+                let mut m = HashMap::new();
+                $(m.insert(as_string($name::$variant), $name::$variant);)*
+                m
+            };
+
+            static ref TO_STRING: HashMap<Errcode, String> = {
+                let mut m = HashMap::new();
+                $(m.insert($name::$variant, as_string($name::$variant));)*
+                m
+            };
+        }
+
+        fn from_string(string: &str) -> Option<&Errcode> {
+            FROM_STRING.get(string)
+        }
+
+        fn to_string<'r>(errcode: &Errcode) -> Option<&'r String> {
+            TO_STRING.get(errcode)
+        }
+
+        impl Serialize for Errcode {
+            fn serialize<S>(&self, serializer: &mut S) -> Result<(), S::Error>
+                where S: Serializer,
+            {
+                // Serialize the enum as a string.
+                match to_string(self) {
+                    Some(string) => serializer.serialize_str(string),
+                    None         => Err(::serde::ser::Error::invalid_value("boo")),
+                }
+            }
+        }
+
+        impl Deserialize for Errcode {
+            fn deserialize<D>(deserializer: &mut D) -> Result<Self, D::Error>
+                where D: Deserializer,
+            {
+                struct Visitor;
+
+                impl ::serde::de::Visitor for Visitor {
+                    type Value = Errcode;
+
+                    fn visit_str<E>(&mut self, value: &str) -> Result<Errcode, E>
+                        where E: ::serde::de::Error,
+                    {
+                        match from_string(value) {
+                            Some(errcode) => Ok(errcode.to_owned()),
+                            None          => Err(E::invalid_value(
+                                &format!("unknown {} variant: {}",
+                                stringify!(Errcode), value))),
+                        }
+                    }
+                }
+
+                // Deserialize the enum from a string.
+                deserializer.deserialize_str(Visitor)
+            }
+        }
+    }
+}
+
+enum_str!(Errcode {
     Unrecognized,
     Unauthorized,
     Forbidden,
@@ -30,18 +104,7 @@ pub enum Errcode {
     ThreepidNotFound,
     InvalidUsername,
     ServerNotTrusted,
-}
-
-impl Errcode {
-    pub fn to_snake_case(&self) -> String {
-        let re = Regex::new(r"([a-z])([A-Z])").unwrap();
-        re.replace_all(self.to_string().as_str(), r"${1}_${2}").to_lowercase()
-    }
-
-    pub fn as_error_code_string(&self) -> String {
-        "M_".to_string() + &self.to_snake_case().to_uppercase()
-    }
-}
+});
 
 impl fmt::Display for Errcode {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -58,14 +121,12 @@ pub struct Error{
 #[cfg(test)]
 mod test {
     use super::Errcode;
+    use serde_test::{Token, assert_tokens};
 
     #[test]
-    fn test_snake_case() {
-        assert_eq!("guest_access_forbidden".to_string(), Errcode::GuestAccessForbidden.to_snake_case());
-    }
+    fn test_errcode_serialization() {
+        let errcode: Errcode = Errcode::GuestAccessForbidden;
 
-    #[test]
-    fn test_as_error_code_string() {
-        assert_eq!("M_GUEST_ACCESS_FORBIDDEN".to_string(), Errcode::GuestAccessForbidden.as_error_code_string());
+        assert_tokens(&errcode, &[Token::Str("M_GUEST_ACCESS_FORBIDDEN")]);
     }
 }

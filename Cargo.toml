@@ -4,6 +4,7 @@ version = "0.0.1"
 authors = ["Jack Lund <jackl@geekheads.net>"]
 
 [dependencies]
+lazy_static = "0.1.*"
 regex = "0.2"
 rocket = "0.1.4"
 rocket_codegen = "0.1.4"
@@ -11,6 +12,7 @@ rocket_contrib = "0.1.4"
 serde = "0.8.4"
 serde_derive = "0.8.4"
 serde_json = "0.8.4"
+serde_test = "0.8.4"
 
 [dev-dependencies]
 rocket = { version = "0.1.4", features = ["testing"] }
