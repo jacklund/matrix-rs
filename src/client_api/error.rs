@@ -44,7 +44,9 @@ macro_rules! enum_str {
                 // Serialize the enum as a string.
                 match to_string(self) {
                     Some(string) => serializer.serialize_str(string),
-                    None         => Err(::serde::ser::Error::invalid_value("boo")),
+                    None         => Err(::serde::ser::Error::invalid_value(
+                                    &format!("unknown {} variant: {}",
+                                    stringify!(Errcode), stringify!(self)))),
                 }
             }
         }
@@ -121,12 +123,17 @@ pub struct Error{
 #[cfg(test)]
 mod test {
     use super::Errcode;
-    use serde_test::{Token, assert_tokens};
+    use serde_test::{Error, Token, assert_de_tokens_error, assert_tokens};
 
     #[test]
     fn test_errcode_serialization() {
         let errcode: Errcode = Errcode::GuestAccessForbidden;
 
         assert_tokens(&errcode, &[Token::Str("M_GUEST_ACCESS_FORBIDDEN")]);
+    }
+
+    #[test]
+    fn test_deserialize_bad_string() {
+        assert_de_tokens_error::<Errcode>(&[Token::Str("BAD_STRING")], Error::InvalidValue("unknown Errcode variant: BAD_STRING".to_string()));
     }
 }
