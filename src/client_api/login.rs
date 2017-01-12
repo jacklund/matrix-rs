@@ -171,8 +171,43 @@ mod test {
     }
 
     #[test]
+    fn test_authenticate_bad_json() {
+        let rocket = super::super::mount();
+        let mut req = MockRequest::new(Method::Post, "/_matrix/client/r0/login")
+            .header(ContentType::JSON)
+            .body("!2qwjoldskfi33903");
+        let mut response = req.dispatch_with(&rocket);
+
+        assert_eq!(response.status(), Status::BadRequest);
+
+        let body_str = response.body().and_then(|b| b.into_string());
+        assert_eq!(Some("{\"errcode\":\"M_BAD_JSON\",\"error\":\"Bad JSON\"}".to_string()), body_str);
+    }
+
+    #[test]
+    fn test_authenticate_not_found() {
+        let rocket = super::super::mount();
+        let login_request = LoginRequest {
+            password : "bar".to_string(),
+            login_type: "m.login.password".to_string(),
+            user: Some("foo"),
+            address: None,
+            medium: None,
+        };
+        let mut req = MockRequest::new(Method::Post, "/_matrix/client/r0/foobar")
+            .header(ContentType::JSON)
+            .body(serde_json::to_string(&login_request).unwrap());
+        let mut response = req.dispatch_with(&rocket);
+
+        assert_eq!(response.status(), Status::NotFound);
+
+        let body_str = response.body().and_then(|b| b.into_string());
+        assert_eq!(Some("{\"errcode\":\"M_NOT_FOUND\",\"error\":\"Not Found\"}".to_string()), body_str);
+    }
+
+    #[test]
     fn test_password_login_authenticated() {
-        let rocket = rocket::ignite().mount("/_matrix/client/r0", routes![super::login]);
+        let rocket = super::super::mount();
         let mut req = login_with_password_request(Some("foo"), "bar", "m.login.password");
         let mut response = req.dispatch_with(&rocket);
 
@@ -187,7 +222,7 @@ mod test {
 
     #[test]
     fn test_password_login_failed_authentication() {
-        let rocket = rocket::ignite().mount("/_matrix/client/r0", routes![super::login]);
+        let rocket = super::super::mount();
         let mut req = login_with_password_request(Some("foo"), "baz", "m.login.password");
         let mut response = req.dispatch_with(&rocket);
 
@@ -201,7 +236,7 @@ mod test {
 
     #[test]
     fn test_password_login_bad_login_type() {
-        let rocket = rocket::ignite().mount("/_matrix/client/r0", routes![super::login]);
+        let rocket = super::super::mount();
         let mut req = login_with_password_request(Some("foo"), "baz", "");
         let mut response = req.dispatch_with(&rocket);
 
@@ -214,7 +249,7 @@ mod test {
 
     #[test]
     fn test_password_login_no_user_id() {
-        let rocket = rocket::ignite().mount("/_matrix/client/r0", routes![super::login]);
+        let rocket = super::super::mount();
         let mut req = login_with_password_request(None, "baz", "m.login.password");
         let mut response = req.dispatch_with(&rocket);
 
