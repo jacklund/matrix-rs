@@ -229,9 +229,9 @@ mod test {
         assert_eq!(response.status(), Status::Forbidden);
 
         let body_str = response.body().and_then(|b| b.into_string());
-        println!("{:?}", serde_json::from_str::<error::Error>(body_str.unwrap().as_str()));
-        // let error : error::Error = serde_json::from_str(body_str.unwrap().as_str()).unwrap();
-        // assert_eq!(error.errcode, error::Errcode::Forbidden);
+        // println!("{:?}", serde_json::from_str::<error::Error>(body_str.unwrap().as_str()));
+        let error : error::Error = serde_json::from_str(body_str.unwrap().as_str()).unwrap();
+        assert_eq!(error.errcode, error::Errcode::Forbidden);
     }
 
     #[test]
