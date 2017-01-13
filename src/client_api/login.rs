@@ -3,6 +3,7 @@ use rocket_contrib::JSON;
 use rocket::http::Status;
 use rocket::response::status;
 use serde_json;
+use std::collections::HashMap;
 use super::error;
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -11,6 +12,16 @@ struct LoginResponse {
     home_server: String,
     user_id: String,
     refresh_token: Option<String>,
+}
+
+type AuthFn = fn(&str, &serde_json::Value) -> Result<bool, error::Errcode>;
+
+lazy_static! {
+    static ref AUTHENTICATION_METHODS: HashMap<&'static str, AuthFn> = {
+        let mut m: HashMap<&'static str, AuthFn> = HashMap::new();
+        m.insert("m.login.password", authenticate_password);
+        m
+    };
 }
 
 fn authenticate_password(user: &str, login_request: &serde_json::Value) -> Result<bool, error::Errcode> {
@@ -70,6 +81,31 @@ fn get_login_type(login_request: &serde_json::Value) -> Option<&str> {
     return get_login_request_value(&login_request, "type");
 }
 
+fn authenticate(login_request: JSON<serde_json::Value>) -> Result<Option<LoginResponse>, status::Custom<JSON<error::Error>>> {
+    match get_login_type(&login_request) {
+        Some(login_type) => {
+            match AUTHENTICATION_METHODS.get(login_type) {
+                Some(authentication_method) => match handle_authentication_request(*authentication_method, &login_request){
+                    Ok(response) => return Ok(response),
+                    Err(errcode) => return Err(status::Custom(Status::InternalServerError,
+                        JSON(error::Error {
+                            errcode : errcode,
+                            error   : "Internal error".to_string(),
+                    }))),
+                },
+                None => return Err(status::Custom(Status::BadRequest, JSON(error::Error{
+                    errcode : error::Errcode::Unknown,
+                    error : "Unknown login type".to_string(),
+                }))),
+            }
+        }
+        None => return Err(status::Custom(Status::BadRequest, JSON(error::Error{
+            errcode : error::Errcode::BadJson,
+            error : "No authentication type found".to_string(),
+        }))),
+    }
+}
+
 #[get("/login")]
 fn get_flows() -> JSON<serde_json::Value> {
     let mut flow = serde_json::Map::new();
@@ -81,35 +117,11 @@ fn get_flows() -> JSON<serde_json::Value> {
 
 #[post("/login", format="application/json", data="<login_request>")]
 fn login(login_request: JSON<serde_json::Value>) -> Result<status::Custom<JSON<LoginResponse>>, status::Custom<JSON<error::Error>>> {
-    let authenticated;
-    match get_login_type(&login_request) {
-        Some(login_type) => {
-            match login_type {
-                "m.login.password" => authenticated = handle_authentication_request(authenticate_password, &login_request),
-                _ => return Err(status::Custom(Status::BadRequest, JSON(error::Error{
-                    errcode : error::Errcode::Unknown,
-                    error : "Bad login type".to_string(),
-                }))),
-            }
-        }
-        None => return Err(status::Custom(Status::BadRequest, JSON(error::Error{
-            errcode : error::Errcode::BadJson,
-            error : "No authentication type found".to_string(),
-        }))),
-    }
-
-    match authenticated {
-        Ok(login_response) => match login_response {
-            Some(login_response) => return Ok(status::Custom(Status::Ok, JSON(login_response))),
-            None                 => return Err(status::Custom(Status::Forbidden, JSON(error::Error {
-                errcode : error::Errcode::Forbidden,
-                error : "Bad login".to_string(),
-            }))),
-        },
-        Err(errcode)  => return Err(status::Custom(Status::InternalServerError,
-            JSON(error::Error {
-                errcode : errcode,
-                error   : "Internal error".to_string(),
+    match try!(authenticate(login_request)) {
+        Some(login_response) => return Ok(status::Custom(Status::Ok, JSON(login_response))),
+        None                 => return Err(status::Custom(Status::Forbidden, JSON(error::Error {
+            errcode : error::Errcode::Forbidden,
+            error : "Bad login".to_string(),
         }))),
     }
 }
