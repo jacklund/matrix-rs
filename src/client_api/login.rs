@@ -15,11 +15,10 @@ struct LoginResponse {
 
 fn authenticate_password(user: &str, login_request: &serde_json::Value) -> Result<bool, error::Errcode> {
     let password_opt = get_login_request_value(&login_request, "password");
-    if password_opt.is_none() {
-        return Err(error::Errcode::MissingParam);
+    match password_opt {
+        Some(password) => return Ok(user == "foo" && password == "bar"),
+        None           => return Err(error::Errcode::MissingParam),
     }
-    let password =  password_opt.unwrap();
-    return Ok(user == "foo" && password == "bar");
 }
 
 fn lookup_3pid(_ : &str, _ : &str) -> Result<Option<String>, error::Errcode> {
@@ -27,23 +26,22 @@ fn lookup_3pid(_ : &str, _ : &str) -> Result<Option<String>, error::Errcode> {
 }
 
 fn get_login_request_value<'r>(login_request: &'r serde_json::Value, key: &str) -> Option<&'r str> {
-    let opt = login_request.find(key);
-    if opt.is_none() {
-        return None;
+    match login_request.find(key) {
+        Some(value) => value.as_str(),
+        None        => None,
     }
-    return opt.unwrap().as_str();
 }
 
 fn get_user_id(login_request: &serde_json::Value) -> Result<Option<String>, error::Errcode> {
-    let medium = get_login_request_value(login_request, "medium");
-    let address = get_login_request_value(login_request, "address");
-    let user = get_login_request_value(login_request, "user");
-    if medium.is_some() && address.is_some() {
-        return lookup_3pid(medium.unwrap(), address.unwrap());
-    } else if user.is_some() {
-        return Ok(Some(user.unwrap().to_string()));
-    } else {
-        return Ok(None);
+    match get_login_request_value(login_request, "medium") {
+        Some(medium) => match get_login_request_value(login_request, "address") {
+            Some(address) => lookup_3pid(medium, address),
+            None          => Ok(None),
+        },
+        None         => match get_login_request_value(login_request, "user") {
+            Some(user) => Ok(Some(user.to_string())),
+            None       => Ok(None),
+        }
     }
 }
 
@@ -57,16 +55,15 @@ fn get_login_response(_ : &str) -> Result<Option<LoginResponse>, error::Errcode>
 }
 
 fn handle_authentication_request(auth_fn: fn(&str, &serde_json::Value) -> Result<bool, error::Errcode>, login_request: &serde_json::Value) -> Result<Option<LoginResponse>, error::Errcode> {
-    let user_id = try!(get_user_id(&login_request));
-    user_id.map_or_else(
-        || return Ok(None),
-        |user_id| {
-            let authenticated = try!(auth_fn(user_id.as_str(), login_request));
-            match authenticated {
+    match try!(get_user_id(&login_request)) {
+        Some(user_id) => {
+            match try!(auth_fn(user_id.as_str(), login_request)) {
                 true  => return get_login_response(user_id.as_str()),
                 false => return Ok(None),
             }
-        })
+        },
+        None          => Ok(None)
+    }
 }
 
 fn get_login_type(login_request: &serde_json::Value) -> Option<&str> {
