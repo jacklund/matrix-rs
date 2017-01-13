@@ -81,28 +81,25 @@ fn get_login_type(login_request: &serde_json::Value) -> Option<&str> {
     return get_login_request_value(&login_request, "type");
 }
 
+fn create_error(status: Status, errcode: error::Errcode, error: &'static str) -> status::Custom<JSON<error::Error>> {
+    status::Custom(status, JSON(error::Error {
+        errcode: errcode,
+        error: error.to_string(),
+    }))
+}
+
 fn authenticate(login_request: JSON<serde_json::Value>) -> Result<Option<LoginResponse>, status::Custom<JSON<error::Error>>> {
     match get_login_type(&login_request) {
         Some(login_type) => {
             match AUTHENTICATION_METHODS.get(login_type) {
-                Some(authentication_method) => match handle_authentication_request(*authentication_method, &login_request){
+                Some(authentication_method) => match handle_authentication_request(*authentication_method, &login_request) {
                     Ok(response) => return Ok(response),
-                    Err(errcode) => return Err(status::Custom(Status::InternalServerError,
-                        JSON(error::Error {
-                            errcode : errcode,
-                            error   : "Internal error".to_string(),
-                    }))),
-                },
-                None => return Err(status::Custom(Status::BadRequest, JSON(error::Error{
-                    errcode : error::Errcode::Unknown,
-                    error : "Unknown login type".to_string(),
-                }))),
+                    Err(errcode) => return Err(create_error(Status::InternalServerError, errcode, "Internal error")),
+                    },
+                None => return Err(create_error(Status::BadRequest, error::Errcode::Unknown, "Unknown login type")),
             }
         }
-        None => return Err(status::Custom(Status::BadRequest, JSON(error::Error{
-            errcode : error::Errcode::BadJson,
-            error : "No authentication type found".to_string(),
-        }))),
+        None => return Err(create_error(Status::BadRequest, error::Errcode::BadJson, "No authentication type found")),
     }
 }
 
