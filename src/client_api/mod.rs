@@ -9,18 +9,20 @@ mod error;
 #[error(404)]
 fn not_found() -> String {
     serde_json::to_string(&error::Error {
-        errcode: error::Errcode::NotFound,
-        error: "Not Found".to_string(),
-    }).unwrap()
+            errcode: error::Errcode::NotFound,
+            error: "Not Found".to_string(),
+        })
+        .unwrap()
 }
 
 // 400 Handler
 #[error(400)]
 fn bad_request() -> String {
     serde_json::to_string(&error::Error {
-        errcode: error::Errcode::BadJson,
-        error: "Bad JSON".to_string(),
-    }).unwrap()
+            errcode: error::Errcode::BadJson,
+            error: "Bad JSON".to_string(),
+        })
+        .unwrap()
 }
 
 // Mount all the submodules' routes

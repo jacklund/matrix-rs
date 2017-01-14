@@ -125,12 +125,11 @@ impl fmt::Display for Errcode {
 
 // Error struct returned by REST endpoints
 #[derive(Serialize, Deserialize, Debug)]
-pub struct Error{
-    pub errcode : Errcode,
-    pub error : String,
+pub struct Error {
+    pub errcode: Errcode,
+    pub error: String,
 }
 
-//
 // Unit tests
 //
 
@@ -153,6 +152,9 @@ mod test {
 
     #[test]
     fn test_deserialize_bad_string() {
-        assert_de_tokens_error::<Errcode>(&[Token::Str("BAD_STRING")], Error::InvalidValue("unknown Errcode variant: BAD_STRING".to_string()));
+        assert_de_tokens_error::<Errcode>(&[Token::Str("BAD_STRING")],
+                                          Error::InvalidValue("unknown Errcode variant: \
+                                                               BAD_STRING"
+                                              .to_string()));
     }
 }
