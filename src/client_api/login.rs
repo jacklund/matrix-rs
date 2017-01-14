@@ -6,6 +6,7 @@ use serde_json;
 use std::collections::HashMap;
 use super::error;
 
+// Login response struct
 #[derive(Serialize, Deserialize, Debug)]
 struct LoginResponse {
     access_token: String,
@@ -14,8 +15,10 @@ struct LoginResponse {
     refresh_token: Option<String>,
 }
 
+// Prototype of the authentication function
 type AuthFn = fn(&str, &serde_json::Value) -> Result<bool, error::Errcode>;
 
+// Map from login types to authentication functions
 lazy_static! {
     static ref AUTHENTICATION_METHODS: HashMap<&'static str, AuthFn> = {
         let mut m: HashMap<&'static str, AuthFn> = HashMap::new();
@@ -24,18 +27,22 @@ lazy_static! {
     };
 }
 
+// Password authentication function
 fn authenticate_password(user: &str, login_request: &serde_json::Value) -> Result<bool, error::Errcode> {
     let password_opt = get_login_request_value(&login_request, "password");
     match password_opt {
+        // Mocked for now, eventually should access a data store
         Some(password) => return Ok(user == "foo" && password == "bar"),
         None           => return Err(error::Errcode::MissingParam),
     }
 }
 
+// Lookup user by 3pid - mocked for now, should access data store for this
 fn lookup_3pid(_ : &str, _ : &str) -> Result<Option<String>, error::Errcode> {
     return Ok(Some("".to_string()));
 }
 
+// Get a value from the login request
 fn get_login_request_value<'r>(login_request: &'r serde_json::Value, key: &str) -> Option<&'r str> {
     match login_request.find(key) {
         Some(value) => value.as_str(),
@@ -43,6 +50,7 @@ fn get_login_request_value<'r>(login_request: &'r serde_json::Value, key: &str) 
     }
 }
 
+// Get the user ID, either by 3pid or from the login request
 fn get_user_id(login_request: &serde_json::Value) -> Result<Option<String>, error::Errcode> {
     match get_login_request_value(login_request, "medium") {
         Some(medium) => match get_login_request_value(login_request, "address") {
@@ -56,6 +64,7 @@ fn get_user_id(login_request: &serde_json::Value) -> Result<Option<String>, erro
     }
 }
 
+// Get a login response for a user ID - mocked for now
 fn get_login_response(_ : &str) -> Result<Option<LoginResponse>, error::Errcode> {
     return Ok(Some(LoginResponse {
         access_token: String::from("abcdef"),
@@ -65,6 +74,7 @@ fn get_login_response(_ : &str) -> Result<Option<LoginResponse>, error::Errcode>
     }));
 }
 
+// Gets the user ID and calls the appropriate authentication function to authenticate
 fn handle_authentication_request(auth_fn: fn(&str, &serde_json::Value) -> Result<bool, error::Errcode>, login_request: &serde_json::Value) -> Result<Option<LoginResponse>, error::Errcode> {
     match try!(get_user_id(&login_request)) {
         Some(user_id) => {
@@ -77,10 +87,12 @@ fn handle_authentication_request(auth_fn: fn(&str, &serde_json::Value) -> Result
     }
 }
 
+// Retrieve the login type string
 fn get_login_type(login_request: &serde_json::Value) -> Option<&str> {
     return get_login_request_value(&login_request, "type");
 }
 
+// Create an error response structure
 fn create_error(status: Status, errcode: error::Errcode, error: &'static str) -> status::Custom<JSON<error::Error>> {
     status::Custom(status, JSON(error::Error {
         errcode: errcode,
@@ -88,6 +100,7 @@ fn create_error(status: Status, errcode: error::Errcode, error: &'static str) ->
     }))
 }
 
+// Gets the login type, looks up the authentication function, and calls handle_authentication_request
 fn authenticate(login_request: JSON<serde_json::Value>) -> Result<Option<LoginResponse>, status::Custom<JSON<error::Error>>> {
     match get_login_type(&login_request) {
         Some(login_type) => {
@@ -103,6 +116,7 @@ fn authenticate(login_request: JSON<serde_json::Value>) -> Result<Option<LoginRe
     }
 }
 
+// REST endpoint to get the flows
 #[get("/login")]
 fn get_flows() -> JSON<serde_json::Value> {
     let mut flow = serde_json::Map::new();
@@ -112,6 +126,7 @@ fn get_flows() -> JSON<serde_json::Value> {
     return JSON(serde_json::Value::Object(value));
 }
 
+// REST authentication endpoint
 #[post("/login", format="application/json", data="<login_request>")]
 fn login(login_request: JSON<serde_json::Value>) -> Result<status::Custom<JSON<LoginResponse>>, status::Custom<JSON<error::Error>>> {
     match try!(authenticate(login_request)) {
@@ -123,9 +138,14 @@ fn login(login_request: JSON<serde_json::Value>) -> Result<status::Custom<JSON<L
     }
 }
 
+// Mounts the routes required for this module
 pub fn mount(rocket: rocket::Rocket) -> rocket::Rocket {
     return rocket.mount("/_matrix/client/r0", routes![get_flows, login]);
 }
+
+//
+// Unit Tests
+//
 
 #[cfg(test)]
 mod test {

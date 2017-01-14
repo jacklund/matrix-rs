@@ -18,5 +18,6 @@ extern crate serde_test;
 mod client_api;
 
 fn main() {
+    // Mount all the client API routes
     client_api::mount().launch();
 }

@@ -3,6 +3,7 @@ use std::fmt;
 use std::collections::HashMap;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
+// Macro to construct the Errcode enum, along with its custom JSON (de)seriialization
 macro_rules! enum_str {
     ($name:ident { $($variant:ident, )* }) => {
         #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -10,11 +11,13 @@ macro_rules! enum_str {
             $($variant,)*
         }
 
+        // Function to convert an Errcode to a string like "M_GUEST_ACCESS_FORBIDDEN"
         fn as_string(errcode: Errcode) -> String {
             let re = Regex::new(r"([a-z])([A-Z])").unwrap();
             "M_".to_string() + re.replace_all(errcode.to_string().as_str(), r"${1}_${2}").to_uppercase().as_str()
         }
 
+        // Maps to convert from Errcode <=> String
         lazy_static! {
             static ref FROM_STRING: HashMap<String, Errcode> = {
                 let mut m = HashMap::new();
@@ -29,14 +32,17 @@ macro_rules! enum_str {
             };
         }
 
+        // Convert from string to Errcode
         fn from_string(string: &str) -> Option<&Errcode> {
             FROM_STRING.get(string)
         }
 
+        // Convert from Errcode to String
         fn to_string<'r>(errcode: &Errcode) -> Option<&'r String> {
             TO_STRING.get(errcode)
         }
 
+        // JSON serialization
         impl Serialize for Errcode {
             fn serialize<S>(&self, serializer: &mut S) -> Result<(), S::Error>
                 where S: Serializer,
@@ -51,6 +57,7 @@ macro_rules! enum_str {
             }
         }
 
+        // JSON Deserialization
         impl Deserialize for Errcode {
             fn deserialize<D>(deserializer: &mut D) -> Result<Self, D::Error>
                 where D: Deserializer,
@@ -79,6 +86,7 @@ macro_rules! enum_str {
     }
 }
 
+// Make the errcode enum
 enum_str!(Errcode {
     Unrecognized,
     Unauthorized,
@@ -108,17 +116,23 @@ enum_str!(Errcode {
     ServerNotTrusted,
 });
 
+// Print the errcode as string
 impl fmt::Display for Errcode {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{:?}", self)
     }
 }
 
+// Error struct returned by REST endpoints
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Error{
     pub errcode : Errcode,
     pub error : String,
 }
+
+//
+// Unit tests
+//
 
 #[cfg(test)]
 mod test {
@@ -130,6 +144,11 @@ mod test {
         let errcode: Errcode = Errcode::GuestAccessForbidden;
 
         assert_tokens(&errcode, &[Token::Str("M_GUEST_ACCESS_FORBIDDEN")]);
+    }
+
+    #[test]
+    fn test_errcode_printing() {
+        assert_eq!("Forbidden", Errcode::Forbidden.to_string());
     }
 
     #[test]

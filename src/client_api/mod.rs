@@ -5,6 +5,7 @@ mod login;
 mod versions;
 mod error;
 
+// 404 Handler
 #[error(404)]
 fn not_found() -> String {
     serde_json::to_string(&error::Error {
@@ -13,6 +14,7 @@ fn not_found() -> String {
     }).unwrap()
 }
 
+// 400 Handler
 #[error(400)]
 fn bad_request() -> String {
     serde_json::to_string(&error::Error {
@@ -21,6 +23,7 @@ fn bad_request() -> String {
     }).unwrap()
 }
 
+// Mount all the submodules' routes
 pub fn mount() -> rocket::Rocket {
     let mut rocket = rocket::ignite();
     rocket = rocket.catch(errors![bad_request, not_found]);
