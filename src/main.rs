@@ -16,6 +16,7 @@ extern crate serde_json;
 extern crate serde_test;
 
 mod client_api;
+mod db;
 
 fn main() {
     // Mount all the client API routes

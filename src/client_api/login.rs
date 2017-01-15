@@ -5,6 +5,8 @@ use rocket::response::status;
 use serde_json;
 use std::collections::HashMap;
 use super::error;
+use super::super::db;
+use super::super::db::DB;
 
 // Login response struct
 #[derive(Serialize, Deserialize, Debug)]
@@ -15,11 +17,26 @@ struct LoginResponse {
     refresh_token: Option<String>,
 }
 
+enum Error {
+    Errstring(String),
+    Errcode(error::Errcode),
+}
+
+macro_rules! get_error {
+    ( $( $x:expr ), + ) => {
+        $( match $x {
+            Ok(value) => Ok(value),
+            Err(errstring) => Err(Error::Errstring(errstring)),
+        } )+
+    }
+}
+
 // Prototype of the authentication function
-type AuthFn = fn(&str, &serde_json::Value) -> Result<bool, error::Errcode>;
+type AuthFn = fn(&str, &serde_json::Value) -> Result<bool, Error>;
 
 // Map from login types to authentication functions
 lazy_static! {
+    static ref MY_DB: db::MockDB = db::MockDB {};
     static ref AUTHENTICATION_METHODS: HashMap<&'static str, AuthFn> = {
         let mut m: HashMap<&'static str, AuthFn> = HashMap::new();
         m.insert("m.login.password", authenticate_password);
@@ -30,18 +47,18 @@ lazy_static! {
 // Password authentication function
 fn authenticate_password(user: &str,
                          login_request: &serde_json::Value)
-                         -> Result<bool, error::Errcode> {
+                         -> Result<bool, Error> {
     let password_opt = get_login_request_value(&login_request, "password");
     match password_opt {
         // Mocked for now, eventually should access a data store
-        Some(password) => return Ok(user == "foo" && password == "bar"),
-        None => return Err(error::Errcode::MissingParam),
+        Some(password) => get_error!(MY_DB.lookup_user_password(user, password)),
+        None => return Err(Error::Errcode(error::Errcode::MissingParam)),
     }
 }
 
 // Lookup user by 3pid - mocked for now, should access data store for this
-fn lookup_3pid(_: &str, _: &str) -> Result<Option<String>, error::Errcode> {
-    return Ok(Some("".to_string()));
+fn lookup_3pid(medium: &str, address: &str) -> Result<Option<String>, Error> {
+    return get_error!(MY_DB.lookup_user_by_3pid(medium, address));
 }
 
 // Get a value from the login request
@@ -53,7 +70,7 @@ fn get_login_request_value<'r>(login_request: &'r serde_json::Value, key: &str) 
 }
 
 // Get the user ID, either by 3pid or from the login request
-fn get_user_id(login_request: &serde_json::Value) -> Result<Option<String>, error::Errcode> {
+fn get_user_id(login_request: &serde_json::Value) -> Result<Option<String>, Error> {
     match get_login_request_value(login_request, "medium") {
         Some(medium) => {
             match get_login_request_value(login_request, "address") {
@@ -63,7 +80,7 @@ fn get_user_id(login_request: &serde_json::Value) -> Result<Option<String>, erro
         }
         None => {
             match get_login_request_value(login_request, "user") {
-                Some(user) => Ok(Some(user.to_string())),
+                Some(user) => get_error!(MY_DB.lookup_user_by_user_id(user)),
                 None => Ok(None),
             }
         }
@@ -71,7 +88,7 @@ fn get_user_id(login_request: &serde_json::Value) -> Result<Option<String>, erro
 }
 
 // Get a login response for a user ID - mocked for now
-fn get_login_response(_: &str) -> Result<Option<LoginResponse>, error::Errcode> {
+fn get_login_response(_: &str) -> Result<Option<LoginResponse>, Error> {
     return Ok(Some(LoginResponse {
         access_token: String::from("abcdef"),
         home_server: String::from("foobar"),
@@ -81,10 +98,9 @@ fn get_login_response(_: &str) -> Result<Option<LoginResponse>, error::Errcode> 
 }
 
 // Gets the user ID and calls the appropriate authentication function to authenticate
-fn handle_authentication_request(auth_fn: fn(&str, &serde_json::Value)
-                                             -> Result<bool, error::Errcode>,
+fn handle_authentication_request(auth_fn: AuthFn,
                                  login_request: &serde_json::Value)
-                                 -> Result<Option<LoginResponse>, error::Errcode> {
+                                 -> Result<Option<LoginResponse>, Error> {
     match try!(get_user_id(&login_request)) {
         Some(user_id) => {
             match try!(auth_fn(user_id.as_str(), login_request)) {
@@ -104,12 +120,12 @@ fn get_login_type(login_request: &serde_json::Value) -> Option<&str> {
 // Create an error response structure
 fn create_error(status: Status,
                 errcode: error::Errcode,
-                error: &'static str)
+                error: String)
                 -> status::Custom<JSON<error::Error>> {
     status::Custom(status,
                    JSON(error::Error {
                        errcode: errcode,
-                       error: error.to_string(),
+                       error: error,
                    }))
 }
 
@@ -122,24 +138,27 @@ fn authenticate(login_request: JSON<serde_json::Value>)
                 Some(authentication_method) => {
                     match handle_authentication_request(*authentication_method, &login_request) {
                         Ok(response) => return Ok(response),
-                        Err(errcode) => {
-                            return Err(create_error(Status::InternalServerError,
-                                                    errcode,
-                                                    "Internal error"))
+                        Err(error) => match error {
+                            Error::Errstring(string) => return Err(create_error(Status::InternalServerError,
+                                                    error::Errcode::Unknown,
+                                                    string)),
+                            Error::Errcode(code) => return Err(create_error(Status::InternalServerError,
+                                                    code,
+                                                    "Internal error".to_string())),
                         }
                     }
                 }
                 None => {
                     return Err(create_error(Status::BadRequest,
                                             error::Errcode::Unknown,
-                                            "Unknown login type"))
+                                            "Unknown login type".to_string()))
                 }
             }
         }
         None => {
             return Err(create_error(Status::BadRequest,
                                     error::Errcode::BadJson,
-                                    "No authentication type found"))
+                                    "No authentication type found".to_string()))
         }
     }
 }
