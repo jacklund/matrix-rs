@@ -50,13 +50,12 @@ fn authenticate_password(user: &str,
                          -> Result<bool, Error> {
     let password_opt = get_login_request_value(&login_request, "password");
     match password_opt {
-        // Mocked for now, eventually should access a data store
         Some(password) => get_error!(MY_DB.lookup_user_password(user, password)),
         None => return Err(Error::Errcode(error::Errcode::MissingParam)),
     }
 }
 
-// Lookup user by 3pid - mocked for now, should access data store for this
+// Lookup user by 3pid
 fn lookup_3pid(medium: &str, address: &str) -> Result<Option<String>, Error> {
     return get_error!(MY_DB.lookup_user_by_3pid(medium, address));
 }
@@ -87,12 +86,13 @@ fn get_user_id(login_request: &serde_json::Value) -> Result<Option<String>, Erro
     }
 }
 
-// Get a login response for a user ID - mocked for now
-fn get_login_response(_: &str) -> Result<Option<LoginResponse>, Error> {
+// Get a login response for a user ID
+fn get_login_response(user_id: &str) -> Result<Option<LoginResponse>, Error> {
+    let home_server = try!(get_error!(MY_DB.lookup_home_server(user_id)));
     return Ok(Some(LoginResponse {
         access_token: String::from("abcdef"),
-        home_server: String::from("foobar"),
-        user_id: String::from("Foo Bar"),
+        home_server: home_server,
+        user_id: user_id.to_string(),
         refresh_token: None,
     }));
 }
