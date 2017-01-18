@@ -13,6 +13,7 @@ serde = "0.8.4"
 serde_derive = "0.8.4"
 serde_json = "0.8.4"
 serde_test = "0.8.4"
+toml = { version = "0.2", features = ["serde"] }
 
 [dev-dependencies]
 rocket = { version = "0.1.4", features = ["testing"] }

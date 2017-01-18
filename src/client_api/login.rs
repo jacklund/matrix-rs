@@ -6,7 +6,6 @@ use serde_json;
 use std::collections::HashMap;
 use super::error;
 use super::super::db;
-use super::super::db::DB;
 
 // Login response struct
 #[derive(Serialize, Deserialize, Debug)]
@@ -36,7 +35,6 @@ type AuthFn = fn(&str, &serde_json::Value) -> Result<bool, Error>;
 
 // Map from login types to authentication functions
 lazy_static! {
-    static ref MY_DB: db::MockDB = db::MockDB {};
     static ref AUTHENTICATION_METHODS: HashMap<&'static str, AuthFn> = {
         let mut m: HashMap<&'static str, AuthFn> = HashMap::new();
         m.insert("m.login.password", authenticate_password);
@@ -44,20 +42,22 @@ lazy_static! {
     };
 }
 
+static mut MY_DB: Option<Box<db::DB>> = None;
+
 // Password authentication function
 fn authenticate_password(user: &str,
                          login_request: &serde_json::Value)
                          -> Result<bool, Error> {
     let password_opt = get_login_request_value(&login_request, "password");
     match password_opt {
-        Some(password) => get_error!(MY_DB.lookup_user_password(user, password)),
+        Some(password) => get_error!(get_db().lookup_user_password(user, password)),
         None => return Err(Error::Errcode(error::Errcode::MissingParam)),
     }
 }
 
 // Lookup user by 3pid
 fn lookup_3pid(medium: &str, address: &str) -> Result<Option<String>, Error> {
-    return get_error!(MY_DB.lookup_user_by_3pid(medium, address));
+    return get_error!(get_db().lookup_user_by_3pid(medium, address));
 }
 
 // Get a value from the login request
@@ -79,7 +79,7 @@ fn get_user_id(login_request: &serde_json::Value) -> Result<Option<String>, Erro
         }
         None => {
             match get_login_request_value(login_request, "user") {
-                Some(user) => get_error!(MY_DB.lookup_user_by_user_id(user)),
+                Some(user) => get_error!(get_db().lookup_user_by_user_id(user)),
                 None => Ok(None),
             }
         }
@@ -88,7 +88,7 @@ fn get_user_id(login_request: &serde_json::Value) -> Result<Option<String>, Erro
 
 // Get a login response for a user ID
 fn get_login_response(user_id: &str) -> Result<Option<LoginResponse>, Error> {
-    let home_server = try!(get_error!(MY_DB.lookup_home_server(user_id)));
+    let home_server = try!(get_error!(get_db().lookup_home_server(user_id)));
     return Ok(Some(LoginResponse {
         access_token: String::from("abcdef"),
         home_server: home_server,
@@ -191,11 +191,24 @@ fn login(login_request: JSON<serde_json::Value>)
     }
 }
 
+pub fn set_db(db: Box<db::DB>) -> () {
+    unsafe {
+        MY_DB = Some(db);
+    }
+}
+
+pub fn get_db() -> &'static Box<db::DB> {
+    unsafe {
+        MY_DB.as_ref().unwrap()
+    }
+}
+
 // Mounts the routes required for this module
 pub fn mount(rocket: rocket::Rocket) -> rocket::Rocket {
     return rocket.mount("/_matrix/client/r0", routes![get_flows, login]);
 }
 
+//
 // Unit Tests
 //
 
@@ -204,6 +217,7 @@ mod test {
     use super::error;
     use super::rocket;
     use super::LoginResponse;
+    use super::super::db;
     use rocket::http::{Status, Method};
     use rocket::http::ContentType;
     use rocket::testing::MockRequest;
@@ -222,6 +236,8 @@ mod test {
     #[test]
     fn test_get_flows() {
         let rocket = rocket::ignite().mount("/_matrix/client/r0", routes![super::get_flows]);
+        super::set_db(Box::new(db::MockDB {})); // Set mock DB
+
         let mut req = MockRequest::new(Method::Get, "/_matrix/client/r0/login");
         let mut response = req.dispatch_with(&rocket);
 
@@ -256,6 +272,7 @@ mod test {
     #[test]
     fn test_authenticate_bad_json() {
         let rocket = super::super::mount();
+        super::set_db(Box::new(db::MockDB {})); // Set mock DB
         let mut req = MockRequest::new(Method::Post, "/_matrix/client/r0/login")
             .header(ContentType::JSON)
             .body("!2qwjoldskfi33903");
@@ -271,6 +288,7 @@ mod test {
     #[test]
     fn test_authenticate_not_found() {
         let rocket = super::super::mount();
+        super::set_db(Box::new(db::MockDB {})); // Set mock DB
         let login_request = LoginRequest {
             password: "bar".to_string(),
             login_type: "m.login.password".to_string(),
@@ -293,6 +311,7 @@ mod test {
     #[test]
     fn test_password_login_authenticated() {
         let rocket = super::super::mount();
+        super::set_db(Box::new(db::MockDB {})); // Set mock DB
         let mut req = login_with_password_request(Some("foo"), "bar", "m.login.password");
         let mut response = req.dispatch_with(&rocket);
 
@@ -309,13 +328,13 @@ mod test {
     #[test]
     fn test_password_login_failed_authentication() {
         let rocket = super::super::mount();
+        super::set_db(Box::new(db::MockDB {})); // Set mock DB
         let mut req = login_with_password_request(Some("foo"), "baz", "m.login.password");
         let mut response = req.dispatch_with(&rocket);
 
         assert_eq!(response.status(), Status::Forbidden);
 
         let body_str = response.body().and_then(|b| b.into_string());
-        // println!("{:?}", serde_json::from_str::<error::Error>(body_str.unwrap().as_str()));
         let error: error::Error = serde_json::from_str(body_str.unwrap().as_str()).unwrap();
         assert_eq!(error.errcode, error::Errcode::Forbidden);
     }
@@ -323,6 +342,7 @@ mod test {
     #[test]
     fn test_password_login_bad_login_type() {
         let rocket = super::super::mount();
+        super::set_db(Box::new(db::MockDB {})); // Set mock DB
         let mut req = login_with_password_request(Some("foo"), "baz", "");
         let mut response = req.dispatch_with(&rocket);
 
@@ -336,6 +356,7 @@ mod test {
     #[test]
     fn test_password_login_no_user_id() {
         let rocket = super::super::mount();
+        super::set_db(Box::new(db::MockDB {})); // Set mock DB
         let mut req = login_with_password_request(None, "baz", "m.login.password");
         let mut response = req.dispatch_with(&rocket);
 

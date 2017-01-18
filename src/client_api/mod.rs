@@ -1,5 +1,6 @@
 use rocket;
 use serde_json;
+use super::db;
 
 mod login;
 mod versions;
@@ -23,6 +24,10 @@ fn bad_request() -> String {
             error: "Bad JSON".to_string(),
         })
         .unwrap()
+}
+
+pub fn set_db(db: Box<db::DB>) -> () {
+    login::set_db(db);
 }
 
 // Mount all the submodules' routes
