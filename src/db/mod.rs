@@ -1,8 +1,10 @@
 use std::fmt;
 use toml;
 
+pub mod mock_db;
+
 pub fn new(_: &toml::Value) -> Box<DB> {
-    Box::new(MockDB {})
+    Box::new(mock_db::MockDB {})
 }
 
 pub trait DB where Self: Sync {
@@ -15,26 +17,5 @@ pub trait DB where Self: Sync {
 impl fmt::Debug for DB {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "DB")
-    }
-}
-
-#[derive(Debug)]
-pub struct MockDB {}
-
-impl DB for MockDB {
-    fn lookup_user_by_3pid(&self, _: &str, _: &str) -> Result<Option<String>, String> {
-        return Ok(Some("".to_string()));
-    }
-
-    fn lookup_user_by_user_id(&self, user_id: &str) -> Result<Option<String>, String> {
-        return Ok(Some(user_id.to_string()));
-    }
-
-    fn lookup_user_password(&self, user: &str, password: &str) -> Result<bool, String> {
-        return Ok(user == "foo" && password == "bar");
-    }
-
-    fn lookup_home_server(&self, _: &str) -> Result<String, String> {
-        return Ok("foobar".to_string());
     }
 }

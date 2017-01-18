@@ -236,7 +236,7 @@ mod test {
     #[test]
     fn test_get_flows() {
         let rocket = rocket::ignite().mount("/_matrix/client/r0", routes![super::get_flows]);
-        super::set_db(Box::new(db::MockDB {})); // Set mock DB
+        super::set_db(Box::new(db::mock_db::MockDB {})); // Set mock DB
 
         let mut req = MockRequest::new(Method::Get, "/_matrix/client/r0/login");
         let mut response = req.dispatch_with(&rocket);
@@ -272,7 +272,7 @@ mod test {
     #[test]
     fn test_authenticate_bad_json() {
         let rocket = super::super::mount();
-        super::set_db(Box::new(db::MockDB {})); // Set mock DB
+        super::set_db(Box::new(db::mock_db::MockDB {})); // Set mock DB
         let mut req = MockRequest::new(Method::Post, "/_matrix/client/r0/login")
             .header(ContentType::JSON)
             .body("!2qwjoldskfi33903");
@@ -288,7 +288,7 @@ mod test {
     #[test]
     fn test_authenticate_not_found() {
         let rocket = super::super::mount();
-        super::set_db(Box::new(db::MockDB {})); // Set mock DB
+        super::set_db(Box::new(db::mock_db::MockDB {})); // Set mock DB
         let login_request = LoginRequest {
             password: "bar".to_string(),
             login_type: "m.login.password".to_string(),
@@ -311,7 +311,7 @@ mod test {
     #[test]
     fn test_password_login_authenticated() {
         let rocket = super::super::mount();
-        super::set_db(Box::new(db::MockDB {})); // Set mock DB
+        super::set_db(Box::new(db::mock_db::MockDB {})); // Set mock DB
         let mut req = login_with_password_request(Some("foo"), "bar", "m.login.password");
         let mut response = req.dispatch_with(&rocket);
 
@@ -328,7 +328,7 @@ mod test {
     #[test]
     fn test_password_login_failed_authentication() {
         let rocket = super::super::mount();
-        super::set_db(Box::new(db::MockDB {})); // Set mock DB
+        super::set_db(Box::new(db::mock_db::MockDB {})); // Set mock DB
         let mut req = login_with_password_request(Some("foo"), "baz", "m.login.password");
         let mut response = req.dispatch_with(&rocket);
 
@@ -342,7 +342,7 @@ mod test {
     #[test]
     fn test_password_login_bad_login_type() {
         let rocket = super::super::mount();
-        super::set_db(Box::new(db::MockDB {})); // Set mock DB
+        super::set_db(Box::new(db::mock_db::MockDB {})); // Set mock DB
         let mut req = login_with_password_request(Some("foo"), "baz", "");
         let mut response = req.dispatch_with(&rocket);
 
@@ -356,7 +356,7 @@ mod test {
     #[test]
     fn test_password_login_no_user_id() {
         let rocket = super::super::mount();
-        super::set_db(Box::new(db::MockDB {})); // Set mock DB
+        super::set_db(Box::new(db::mock_db::MockDB {})); // Set mock DB
         let mut req = login_with_password_request(None, "baz", "m.login.password");
         let mut response = req.dispatch_with(&rocket);
 
