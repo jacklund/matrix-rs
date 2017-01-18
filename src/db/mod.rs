@@ -2,9 +2,17 @@ use std::fmt;
 use toml;
 
 pub mod mock_db;
+pub mod memory;
 
-pub fn new(_: &toml::Value) -> Box<DB> {
-    Box::new(mock_db::MockDB {})
+pub fn new(config: &toml::Value) -> Box<DB> {
+    match config.lookup("type") {
+        Some(value) => match value.as_str() {
+            Some("mock") => Box::new(mock_db::MockDB {}),
+            Some("memory") => Box::new(memory::MemoryDB::new()),
+            _ => panic!("Unknown DB type {:?}", value.as_str()),
+        },
+        None => panic!("No DB type configured"),
+    }
 }
 
 pub trait DB where Self: Sync {

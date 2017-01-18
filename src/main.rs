@@ -31,7 +31,12 @@ fn read_config() -> toml::Table {
     let mut config_string = String::new();
     file.read_to_string(&mut config_string).unwrap();
     let mut parser = Parser::new(&config_string);
-    parser.parse().unwrap()
+    let config: Option<toml::Table> = parser.parse();
+    if config.is_none() {
+        panic!("{:?}", parser.errors);
+    }
+
+    config.unwrap()
 }
 
 fn get_db(config: toml::Table) -> Box<db::DB> {
