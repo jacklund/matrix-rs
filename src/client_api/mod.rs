@@ -1,8 +1,8 @@
 use rocket;
 use serde_json;
-use super::db;
 
 mod login;
+mod registration;
 mod versions;
 mod error;
 
@@ -26,15 +26,12 @@ fn bad_request() -> String {
         .unwrap()
 }
 
-pub fn set_db(db: Box<db::DB>) -> () {
-    login::set_db(db);
-}
-
 // Mount all the submodules' routes
 pub fn mount() -> rocket::Rocket {
     let mut rocket = rocket::ignite();
     rocket = rocket.catch(errors![bad_request, not_found]);
     rocket = versions::mount(rocket);
     rocket = login::mount(rocket);
+    rocket = registration::mount(rocket);
     rocket
 }

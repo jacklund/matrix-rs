@@ -24,32 +24,58 @@ use std::fs::File;
 use std::io::Read;
 use toml::Parser;
 
-// This function panics if anything's wrong
-fn read_config() -> toml::Table {
-    // Read config file
-    let mut file = File::open("matrix_rs.toml").unwrap();
-    let mut config_string = String::new();
-    file.read_to_string(&mut config_string).unwrap();
-    let mut parser = Parser::new(&config_string);
-    let config: Option<toml::Table> = parser.parse();
-    if config.is_none() {
-        panic!("{:?}", parser.errors);
-    }
-
-    config.unwrap()
+enum Errors {
+    IOError(std::io::Error),
+    ParseError(Vec<toml::ParserError>),
 }
 
-fn get_db(config: toml::Table) -> Box<db::DB> {
+impl From<std::io::Error> for Errors {
+    fn from(error: std::io::Error) -> Self {
+        Errors::IOError(error)
+    }
+}
+
+impl From<Vec<toml::ParserError>> for Errors {
+    fn from(errors: Vec<toml::ParserError>) -> Self {
+        Errors::ParseError(errors)
+    }
+}
+
+impl std::fmt::Debug for Errors {
+    fn fmt(&self, format: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            &Errors::IOError(ref value) => value.fmt(format),
+            &Errors::ParseError(ref value) => value.fmt(format),
+        }
+    }
+}
+
+// This function panics if anything's wrong
+fn read_config() -> Result<toml::Table, Errors> {
+    // Read config file
+    let mut file = try!(File::open("matrix_rs.toml"));
+    let mut config_string = String::new();
+    try!(file.read_to_string(&mut config_string));
+    let mut parser = Parser::new(&config_string);
+    let config: Option<toml::Table> = parser.parse();
+    match config {
+        Some(config_value) => Ok(config_value),
+        None => panic!("{:?}", parser.errors),
+    }
+}
+
+fn initialize_db(config: toml::Table) {
     match config.get("db") {
-        Some(db_config) => return db::new(db_config),
+        Some(db_config) => db::initialize(db_config),
         None => panic!("No DB config found!"),
     }
 }
 
 fn main() {
-    let config = read_config();
-    let db: Box<db::DB> = get_db(config);
-    client_api::set_db(db);
+    match read_config() {
+        Ok(config) => initialize_db(config),
+        Err(error) => panic!("{:?}", error),
+    }
 
     // Mount all the client API routes
     client_api::mount().launch();

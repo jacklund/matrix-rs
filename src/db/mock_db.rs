@@ -4,6 +4,10 @@ use db::DB;
 pub struct MockDB {}
 
 impl DB for MockDB {
+    fn add_user_auth(&mut self, _: String, _: String) -> Result<(), String> {
+        Ok(())
+    }
+
     fn lookup_user_by_3pid(&self, _: &str, _: &str) -> Result<Option<String>, String> {
         return Ok(Some("".to_string()));
     }
