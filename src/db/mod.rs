@@ -27,14 +27,14 @@ pub fn initialize(config: &toml::Value) {
 }
 
 // Get a reference to the DB impl
-pub fn get() -> Option<&'static DB> {
+pub fn get() -> &'static DB {
     unsafe {
         // Needs some 'splainin.
         // Don't want to return Option<Box<DB>>, because it will always try to move it when I unwrap.
-        // Instead, we return an Option<&DB>, which we create by calling as_ref() on the option to get
-        // an &Box<DB>, and then call map(|b| b.as_ref()) to convert that to an &DB, which then gets
-        // returned as an Option<&DB>.
-        DB_INSTANCE.as_ref().map(|b| b.as_ref())
+        // Instead, we return an &DB, which we create by calling as_ref() on the option to get
+        // an &Box<DB>, and then call map(|b| b.as_ref()) to convert that to an &DB, and then
+        // we unwrap that to return the reference
+        DB_INSTANCE.as_ref().map(|b| b.as_ref()).unwrap()
     }
 }
 

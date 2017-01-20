@@ -48,14 +48,14 @@ fn authenticate_password(user: &str,
                          -> Result<bool, Error> {
     let password_opt = get_login_request_value(&login_request, "password");
     match password_opt {
-        Some(password) => get_error!(db::get().unwrap().lookup_user_password(user, password)),
+        Some(password) => get_error!(db::get().lookup_user_password(user, password)),
         None => return Err(Error::Errcode(error::Errcode::MissingParam)),
     }
 }
 
 // Lookup user by 3pid
 fn lookup_3pid(medium: &str, address: &str) -> Result<Option<String>, Error> {
-    return get_error!(db::get().unwrap().lookup_user_by_3pid(medium, address));
+    return get_error!(db::get().lookup_user_by_3pid(medium, address));
 }
 
 // Get a value from the login request
@@ -77,7 +77,7 @@ fn get_user_id(login_request: &serde_json::Value) -> Result<Option<String>, Erro
         }
         None => {
             match get_login_request_value(login_request, "user") {
-                Some(user) => get_error!(db::get().unwrap().lookup_user_by_user_id(user)),
+                Some(user) => get_error!(db::get().lookup_user_by_user_id(user)),
                 None => Ok(None),
             }
         }
@@ -86,7 +86,7 @@ fn get_user_id(login_request: &serde_json::Value) -> Result<Option<String>, Erro
 
 // Get a login response for a user ID
 fn get_login_response(user_id: &str) -> Result<Option<LoginResponse>, Error> {
-    let home_server = try!(get_error!(db::get().unwrap().lookup_home_server(user_id)));
+    let home_server = try!(get_error!(db::get().lookup_home_server(user_id)));
     return Ok(Some(LoginResponse {
         access_token: String::from("abcdef"),
         home_server: home_server,
