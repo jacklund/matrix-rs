@@ -7,9 +7,7 @@ pub struct MemoryDB {
 
 impl MemoryDB {
     pub fn new() -> MemoryDB {
-        MemoryDB {
-            user_password: Box::new(HashMap::new()),
-        }
+        MemoryDB { user_password: Box::new(HashMap::new()) }
     }
 }
 
@@ -27,19 +25,18 @@ impl super::DB for MemoryDB {
         Ok(Some(user_id.to_string()))
     }
 
-    fn lookup_user_password(&self, user: &str, password: &str) -> Result<bool, String> {
-        match self.user_password.get(user) {
-            Some(stored_password) => Ok(password == stored_password),
+    fn lookup_user_password(&self, user: String, password: String) -> Result<bool, String> {
+        match self.user_password.get(user.as_str()) {
+            Some(stored_password) => Ok(*stored_password == *password),
             None => Ok(false),
         }
     }
 
-    fn lookup_home_server(&self, _: &str) -> Result<String, String> {
-        Ok("".to_string())
+    fn lookup_home_server(&self, _: &str) -> Result<Option<String>, String> {
+        Ok(Some("".to_string()))
     }
 }
 
-//
 // Unit Tests
 //
 
@@ -51,10 +48,11 @@ mod test {
     #[test]
     fn test_add_user_auth() {
         let mut memory_db = MemoryDB::new();
-        assert_eq!(Ok(()), memory_db.add_user_auth("foo".to_string(), "bar".to_string()));
-        let result = memory_db.lookup_user_password("foo", "bar");
+        assert_eq!(Ok(()),
+                   memory_db.add_user_auth("foo".to_string(), "bar".to_string()));
+        let result = memory_db.lookup_user_password("foo".to_string(), "bar".to_string());
         assert_eq!(Ok(true), result);
-        let result = memory_db.lookup_user_password("foo", "baz");
+        let result = memory_db.lookup_user_password("foo".to_string(), "baz".to_string());
         assert_eq!(Ok(false), result);
     }
 }

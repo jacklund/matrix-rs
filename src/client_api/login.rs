@@ -4,6 +4,8 @@ use rocket::http::Status;
 use rocket::response::status;
 use serde_json;
 use std::collections::HashMap;
+use std::fmt;
+use std::convert::From;
 use super::error;
 use super::super::db;
 
@@ -16,22 +18,57 @@ struct LoginResponse {
     refresh_token: Option<String>,
 }
 
-enum Error {
-    Errstring(String),
-    Errcode(error::Errcode),
+// enum Error {
+//     Errstring(String),
+//     Errcode(error::Errcode),
+// }
+
+pub enum AuthError {
+    MissingValue(&'static str),
+    SystemError(String),
+    UnknownAuthMethod(String),
+}
+
+impl From<AuthError> for status::Custom<JSON<error::Error>> {
+    fn from(error: AuthError) -> status::Custom<JSON<error::Error>> {
+        match error {
+            AuthError::MissingValue(missing_value) => {
+                status::Custom(Status::BadRequest,
+                               JSON(error::Error {
+                                   errcode: error::Errcode::BadJson,
+                                   error: fmt::format(format_args!("Missing value {}",
+                                                                   missing_value)),
+                               }))
+            }
+            AuthError::SystemError(_) => {
+                status::Custom(Status::InternalServerError,
+                               JSON(error::Error {
+                                   errcode: error::Errcode::Unknown,
+                                   error: "Server Error".to_string(),
+                               }))
+            }
+            AuthError::UnknownAuthMethod(_) => {
+                status::Custom(Status::BadRequest,
+                               JSON(error::Error {
+                                   errcode: error::Errcode::BadJson,
+                                   error: "Server Error".to_string(),
+                               }))
+            }
+        }
+    }
 }
 
 macro_rules! get_error {
     ( $( $x:expr ), + ) => {
         $( match $x {
             Ok(value) => Ok(value),
-            Err(errstring) => Err(Error::Errstring(errstring)),
+            Err(errstring) => Err(AuthError::SystemError(errstring)),
         } )+
     }
 }
 
 // Prototype of the authentication function
-type AuthFn = fn(&str, &serde_json::Value) -> Result<bool, Error>;
+type AuthFn = fn(&serde_json::Value) -> Result<bool, AuthError>;
 
 // Map from login types to authentication functions
 lazy_static! {
@@ -43,122 +80,107 @@ lazy_static! {
 }
 
 // Password authentication function
-fn authenticate_password(user: &str,
-                         login_request: &serde_json::Value)
-                         -> Result<bool, Error> {
-    let password_opt = get_login_request_value(&login_request, "password");
-    match password_opt {
-        Some(password) => get_error!(db::get().lookup_user_password(user, password)),
-        None => return Err(Error::Errcode(error::Errcode::MissingParam)),
+fn authenticate_password(login_request: &serde_json::Value) -> Result<bool, AuthError> {
+    let user_opt = try!(get_user_id(&login_request));
+    match user_opt {
+        Some(user) => {
+            let password_opt = get_login_request_value(&login_request, "password");
+            match password_opt {
+                Some(password) => {
+                    get_error!(db::get().lookup_user_password(user, password.to_string()))
+                }
+                None => return Err(AuthError::MissingValue("password")),
+            }
+        }
+        None => Err(AuthError::MissingValue("user")),
     }
 }
 
 // Lookup user by 3pid
-fn lookup_3pid(medium: &str, address: &str) -> Result<Option<String>, Error> {
+fn lookup_3pid(medium: &str, address: &str) -> Result<Option<String>, AuthError> {
     return get_error!(db::get().lookup_user_by_3pid(medium, address));
 }
 
 // Get a value from the login request
 fn get_login_request_value<'r>(login_request: &'r serde_json::Value, key: &str) -> Option<&'r str> {
     match login_request.find(key) {
-        Some(value) => value.as_str(),
+        Some(value) => {
+            match value.as_str() {
+                Some(string) => Some(string),
+                None => None,
+            }
+        }
         None => None,
     }
 }
 
 // Get the user ID, either by 3pid or from the login request
-fn get_user_id(login_request: &serde_json::Value) -> Result<Option<String>, Error> {
+fn get_user_id(login_request: &serde_json::Value) -> Result<Option<String>, AuthError> {
     match get_login_request_value(login_request, "medium") {
         Some(medium) => {
             match get_login_request_value(login_request, "address") {
                 Some(address) => lookup_3pid(medium, address),
-                None => Ok(None),
+                None => Err(AuthError::MissingValue("address")),
             }
         }
         None => {
             match get_login_request_value(login_request, "user") {
                 Some(user) => get_error!(db::get().lookup_user_by_user_id(user)),
-                None => Ok(None),
+                None => Err(AuthError::MissingValue("user")),
             }
         }
     }
 }
 
 // Get a login response for a user ID
-fn get_login_response(user_id: &str) -> Result<Option<LoginResponse>, Error> {
+fn get_login_response(user_id: &str) -> Result<LoginResponse, AuthError> {
     let home_server = try!(get_error!(db::get().lookup_home_server(user_id)));
-    return Ok(Some(LoginResponse {
+    return Ok(LoginResponse {
         access_token: String::from("abcdef"),
-        home_server: home_server,
+        home_server: match home_server {
+            Some(value) => value,
+            None => "".to_string(),
+        },
         user_id: user_id.to_string(),
         refresh_token: None,
-    }));
-}
-
-// Gets the user ID and calls the appropriate authentication function to authenticate
-fn handle_authentication_request(auth_fn: AuthFn,
-                                 login_request: &serde_json::Value)
-                                 -> Result<Option<LoginResponse>, Error> {
-    match try!(get_user_id(&login_request)) {
-        Some(user_id) => {
-            match try!(auth_fn(user_id.as_str(), login_request)) {
-                true => return get_login_response(user_id.as_str()),
-                false => return Ok(None),
-            }
-        }
-        None => Ok(None),
-    }
+    });
 }
 
 // Retrieve the login type string
-fn get_login_type(login_request: &serde_json::Value) -> Option<&str> {
-    return get_login_request_value(&login_request, "type");
+fn get_login_type(login_request: &serde_json::Value) -> Option<String> {
+    match get_login_request_value(login_request, "type") {
+        Some(value) => Some(value.to_string()),
+        None => None,
+    }
 }
 
-// Create an error response structure
-fn create_error(status: Status,
-                errcode: error::Errcode,
-                error: String)
-                -> status::Custom<JSON<error::Error>> {
+static DUMMY_AUTH: &'static str = "m.login.dummy";
+
+// Gets the login type, looks up the authentication function, and calls handle_authentication_request
+pub fn authenticate(login_request: &serde_json::Value, internal: bool) -> Result<bool, AuthError> {
+    match get_login_type(&login_request) {
+        Some(login_type) => {
+            if login_type == DUMMY_AUTH && internal {
+                return Ok(true);
+            }
+            match AUTHENTICATION_METHODS.get(login_type.as_str()) {
+                Some(authentication_method) => authentication_method(login_request),
+                None => Err(AuthError::UnknownAuthMethod(login_type.to_owned())),
+            }
+        }
+        None => Err(AuthError::MissingValue("login type")),
+    }
+}
+
+fn get_error(status: Status,
+             errcode: error::Errcode,
+             error_string: &str)
+             -> status::Custom<JSON<error::Error>> {
     status::Custom(status,
                    JSON(error::Error {
                        errcode: errcode,
-                       error: error,
+                       error: error_string.to_string(),
                    }))
-}
-
-// Gets the login type, looks up the authentication function, and calls handle_authentication_request
-fn authenticate(login_request: JSON<serde_json::Value>)
-                -> Result<Option<LoginResponse>, status::Custom<JSON<error::Error>>> {
-    match get_login_type(&login_request) {
-        Some(login_type) => {
-            match AUTHENTICATION_METHODS.get(login_type) {
-                Some(authentication_method) => {
-                    match handle_authentication_request(*authentication_method, &login_request) {
-                        Ok(response) => return Ok(response),
-                        Err(error) => match error {
-                            Error::Errstring(string) => return Err(create_error(Status::InternalServerError,
-                                                    error::Errcode::Unknown,
-                                                    string)),
-                            Error::Errcode(code) => return Err(create_error(Status::InternalServerError,
-                                                    code,
-                                                    "Internal error".to_string())),
-                        }
-                    }
-                }
-                None => {
-                    return Err(create_error(Status::BadRequest,
-                                            error::Errcode::Unknown,
-                                            "Unknown login type".to_string()))
-                }
-            }
-        }
-        None => {
-            return Err(create_error(Status::BadRequest,
-                                    error::Errcode::BadJson,
-                                    "No authentication type found".to_string()))
-        }
-    }
 }
 
 // REST endpoint to get the flows
@@ -174,18 +196,31 @@ fn get_flows() -> JSON<serde_json::Value> {
 }
 
 // REST authentication endpoint
-#[post("/login", format="application/json", data="<login_request>")]
-fn login(login_request: JSON<serde_json::Value>)
+#[post("/login", format="application/json", data="<login_request_json>")]
+fn login(login_request_json: JSON<serde_json::Value>)
          -> Result<status::Custom<JSON<LoginResponse>>, status::Custom<JSON<error::Error>>> {
-    match try!(authenticate(login_request)) {
-        Some(login_response) => return Ok(status::Custom(Status::Ok, JSON(login_response))),
-        None => {
-            return Err(status::Custom(Status::Forbidden,
-                                      JSON(error::Error {
-                                          errcode: error::Errcode::Forbidden,
-                                          error: "Bad login".to_string(),
-                                      })))
+    let login_request = login_request_json.unwrap();
+    match authenticate(&login_request, false) {
+        Ok(true) => {
+            match get_user_id(&login_request) {
+                Ok(Some(user_id)) => {
+                    match get_login_response(user_id.as_str()) {
+                        Ok(login_response) => Ok(status::Custom(Status::Ok, JSON(login_response))),
+                        Err(error) => Err(From::from(error)),
+                    }
+                }
+                Ok(None) => {
+                    Err(From::from(AuthError::SystemError("User ID not found".to_string())))
+                }
+                Err(error) => Err(From::from(error)),
+            }
         }
+        Ok(false) => {
+            Err(get_error(Status::Forbidden,
+                          error::Errcode::Forbidden,
+                          "Authentication failed"))
+        }
+        Err(error) => Err(From::from(error)),
     }
 }
 
@@ -194,7 +229,6 @@ pub fn mount(rocket: rocket::Rocket) -> rocket::Rocket {
     return rocket.mount("/_matrix/client/r0", routes![get_flows, login]);
 }
 
-//
 // Unit Tests
 //
 
@@ -349,7 +383,7 @@ mod test {
 
         let body_str = response.body().and_then(|b| b.into_string());
         let error: super::error::Error = serde_json::from_str(body_str.unwrap().as_str()).unwrap();
-        assert_eq!(error.errcode, error::Errcode::Unknown);
+        assert_eq!(error.errcode, error::Errcode::BadJson);
     }
 
     #[test]
@@ -360,12 +394,11 @@ mod test {
         let mut req = login_with_password_request(None, "baz", "m.login.password");
         let mut response = req.dispatch_with(&rocket);
 
-        assert_eq!(response.status(), Status::Forbidden);
+        assert_eq!(response.status(), Status::BadRequest);
 
         let body_str = response.body().and_then(|b| b.into_string());
-        println!("{:?}", body_str);
         let error: serde_json::Map<String, String> =
             serde_json::from_str(body_str.unwrap().as_str()).unwrap();
-        assert_eq!("M_FORBIDDEN", error.get("errcode").unwrap().as_str());
+        assert_eq!("M_BAD_JSON", error.get("errcode").unwrap().as_str());
     }
 }

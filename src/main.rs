@@ -4,15 +4,12 @@
 #![feature(proc_macro)]
 #![feature(drop_types_in_const)]
 
-#[macro_use]
-extern crate lazy_static;
+#[macro_use] extern crate lazy_static;
 extern crate regex;
-extern crate rocket;
-#[macro_use]
-extern crate rocket_contrib;
+#[macro_use] extern crate rocket;
+#[macro_use] extern crate rocket_contrib;
 extern crate serde;
-#[macro_use]
-extern crate serde_derive;
+#[macro_use] extern crate serde_derive;
 extern crate serde_json;
 extern crate serde_test;
 extern crate toml;
