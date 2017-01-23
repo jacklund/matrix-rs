@@ -56,19 +56,24 @@ fn register
                                   error::Errcode::Unauthorized,
                                   "No auth specified"));
     let login_response = try!(super::login::authenticate(auth, true));
-    match db::get().add_user_auth(user_id.as_str().unwrap().to_string(), password.as_str().unwrap().to_string()) {
-        Ok(_) => Ok(status::Custom(Status::Ok,
-                            JSON(RegistrationResponse {
-                                user_id: user_id.as_str().unwrap().to_string(),
-                                access_token: "bar".to_string(),
-                                home_server: "baz".to_string(),
-                                refresh_token: "foobar".to_string(),
-                            }))),
-        Err(error) => Err(status::Custom(Status::InternalServerError,
+    match db::get().add_user_auth(user_id.as_str().unwrap().to_string(),
+                                  password.as_str().unwrap().to_string()) {
+        Ok(_) => {
+            Ok(status::Custom(Status::Ok,
+                              JSON(RegistrationResponse {
+                                  user_id: user_id.as_str().unwrap().to_string(),
+                                  access_token: "bar".to_string(),
+                                  home_server: "baz".to_string(),
+                                  refresh_token: "foobar".to_string(),
+                              })))
+        }
+        Err(error) => {
+            Err(status::Custom(Status::InternalServerError,
                                JSON(error::Error {
                                    errcode: error::Errcode::Unknown,
                                    error: error,
                                })))
+        }
 
     }
 }
