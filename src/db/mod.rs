@@ -20,6 +20,7 @@ static mut DB_INSTANCE: Option<Box<DB>> = None;
 pub fn initialize(config: &toml::Value) {
     match config.lookup("type") {
         Some(value) => {
+            println!("DB type is {}", value);
             match value.as_str() {
                 Some("mock") => unsafe { DB_INSTANCE = Some(Box::new(mock_db::MockDB {})) },
                 Some("memory") => unsafe { DB_INSTANCE = Some(Box::new(memory::MemoryDB::new())) },
@@ -31,14 +32,14 @@ pub fn initialize(config: &toml::Value) {
 }
 
 // Get a reference to the DB impl
-pub fn get() -> &'static DB {
+pub fn get() -> &'static mut DB {
     unsafe {
         // Needs some 'splainin.
         // Don't want to return Option<Box<DB>>, because it will always try to move it when I unwrap.
-        // Instead, we return an &DB, which we create by calling as_ref() on the option to get
-        // an &Box<DB>, and then call map(|b| b.as_ref()) to convert that to an &DB, and then
+        // Instead, we return a &mut DB, which we create by calling as_mut() on the option to get
+        // an &mut Box<DB>, and then call map(|b| b.as_mut()) to convert that to an &mut DB, and then
         // we unwrap that to return the reference
-        DB_INSTANCE.as_ref().map(|b| b.as_ref()).unwrap()
+        DB_INSTANCE.as_mut().map(|b| b.as_mut()).unwrap()
     }
 }
 
