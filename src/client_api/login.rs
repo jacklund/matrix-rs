@@ -18,11 +18,6 @@ struct LoginResponse {
     refresh_token: Option<String>,
 }
 
-// enum Error {
-//     Errstring(String),
-//     Errcode(error::Errcode),
-// }
-
 pub enum AuthError {
     MissingValue(&'static str),
     SystemError(String),
